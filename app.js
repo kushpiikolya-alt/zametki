@@ -48,7 +48,7 @@
   // ---------- auth ----------
   const AUTH_ERR = m => {
     m = (m || "").toLowerCase();
-    if (m.includes("invalid login")) return "Неверная почта или пароль.";
+    if (m.includes("invalid login")) return "Пароль не подходит. Нажмите «Показать» и проверьте раскладку (EN/RU) и большие буквы.";
     if (m.includes("already registered") || m.includes("already exists")) return "Такой аккаунт уже есть. Нажмите «Войти».";
     if (m.includes("password") && m.includes("6")) return "Пароль должен быть не короче 6 символов.";
     if (m.includes("email") && (m.includes("invalid") || m.includes("valid"))) return "Проверьте адрес почты.";
@@ -57,7 +57,7 @@
     return "Не получилось: " + m;
   };
   async function doAuth(kind) {
-    const e = $("email").value.trim(), p = $("password").value;
+    const e = $("email").value.trim().toLowerCase(), p = $("password").value;
     const msg = $("authMsg"); msg.className = "auth-msg";
     if (!e || !p) { msg.textContent = "Введите почту и пароль."; return; }
     if (p.length < 6) { msg.textContent = "Пароль должен быть не короче 6 символов."; return; }
@@ -69,6 +69,7 @@
     } catch (err) { msg.textContent = AUTH_ERR(err.message); }
     $("signIn").disabled = $("signUp").disabled = false;
   }
+  $("pwEye").onclick = () => { const i = $("password"), show = i.type === "password"; i.type = show ? "text" : "password"; $("pwEye").textContent = show ? "Скрыть" : "Показать"; };
   $("authForm").onsubmit = ev => { ev.preventDefault(); doAuth("in"); };
   $("signUp").onclick = () => doAuth("up");
   $("logoutBtn").onclick = async () => {

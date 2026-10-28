@@ -56,6 +56,9 @@ input,textarea{font:inherit}
 .btn:disabled{opacity:.6;cursor:default}
 .auth-row{display:flex;gap:10px}
 .auth-row .btn{flex:1}
+.pw{position:relative;display:flex}.pw input{flex:1;padding-right:96px}
+.pw-eye{position:absolute;right:6px;top:50%;transform:translateY(-50%);border:0;background:var(--accent-soft);color:var(--accent);border-radius:7px;padding:6px 10px;font-size:13px;font-weight:600}
+.auth-hint{font-size:12.5px!important}
 .auth-msg{font-size:14px;min-height:20px;color:var(--danger)}
 .auth-msg.ok{color:var(--ok)}
 
@@ -152,8 +155,9 @@ input,textarea{font:inherit}
     <img class="auth-logo" src="icon-192.png" alt="">
     <h1>Заметки</h1>
     <p>Войдите, чтобы заметки были одинаковыми на телефоне и компьютере.</p>
-    <div class="field"><label for="email">Почта</label><input id="email" type="email" autocomplete="email" inputmode="email" required></div>
-    <div class="field"><label for="password">Пароль</label><input id="password" type="password" autocomplete="current-password" minlength="6" required></div>
+    <div class="field"><label for="email">Почта</label><input id="email" type="email" autocomplete="email" inputmode="email" autocapitalize="off" autocorrect="off" spellcheck="false" required></div>
+    <div class="field"><label for="password">Пароль</label><div class="pw"><input id="password" type="password" autocomplete="current-password" autocapitalize="off" autocorrect="off" spellcheck="false" minlength="6" required><button type="button" class="pw-eye" id="pwEye">Показать</button></div></div>
+    <p class="auth-hint">Пароль чувствителен к регистру и раскладке: «Abc» и «abc» — разные пароли. Нажмите «Показать», чтобы проверить, что вводите.</p>
     <div class="auth-row">
       <button class="btn primary" id="signIn" type="submit">Войти</button>
       <button class="btn ghost" id="signUp" type="button">Создать аккаунт</button>
