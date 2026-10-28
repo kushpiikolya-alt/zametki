@@ -24,7 +24,7 @@
   // ---------- форматированный текст ----------
   const isHtml = b => /^\s*</.test(b || "") && /<\/?(div|p|br|b|strong|i|em|u|s|strike|mark|ul|ol|li|h[1-3]|span|blockquote)\b/i.test(b);
   const esc = t => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
-  const TAGS = new Set(["B","STRONG","I","EM","U","S","STRIKE","MARK","BR","DIV","P","UL","OL","LI","H1","H2","H3","BLOCKQUOTE","SPAN","FONT"]);
+  const TAGS = new Set(["B","STRONG","I","EM","U","S","STRIKE","MARK","BR","DIV","P","UL","OL","LI","H1","H2","H3","BLOCKQUOTE","SPAN","FONT","TABLE","THEAD","TBODY","TR","TH","TD"]);
   const COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|transparent|[a-z]+)$/i;
   function sanitize(html) {
     const t = document.createElement("template"); t.innerHTML = html;
@@ -54,7 +54,7 @@
   function plain(b) {
     if (!isHtml(b)) return b || "";
     const t = document.createElement("template");
-    t.innerHTML = b.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li|h[1-3]|blockquote)>/gi, "\n");
+    t.innerHTML = b.replace(/<\/t[dh]>/gi, "  ").replace(/<\/tr>/gi, "\n").replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li|h[1-3]|blockquote)>/gi, "\n");
     return t.content.textContent.replace(/ /g, " ").replace(/\n{3,}/g, "\n\n");
   }
   const lines = s => plain(s).split("\n").filter(l => l.trim());
@@ -285,6 +285,17 @@
     });
     ta.addEventListener("keydown", e => {
       const k = e.code, mod = e.ctrlKey || e.metaKey;
+      if (e.key === "Tab" && !e.altKey && !mod) {
+        const cell = selCell();
+        if (cell) {
+          e.preventDefault(); e.stopImmediatePropagation();
+          const all = [...cell.closest("table").querySelectorAll("th,td")], i = all.indexOf(cell);
+          if (e.shiftKey) { if (i > 0) caretIn(all[i - 1], true); }
+          else if (i < all.length - 1) caretIn(all[i + 1], true);
+          else { tableOp("rowAdd"); const c2 = selCell(); if (c2) caretIn(c2.parentNode.firstElementChild); }
+          return;
+        }
+      }
       if (mod && e.shiftKey && k === "KeyH") { e.preventDefault(); applyFmt("mark"); }
       else if (mod && e.shiftKey && k === "KeyX") { e.preventDefault(); applyFmt("strikeThrough"); }
       else if (mod && e.shiftKey && k === "Digit7") { e.preventDefault(); applyFmt("ol"); }
@@ -324,7 +335,8 @@
       document.execCommand("styleWithCSS", false, false);
     } else if (cmd === "h") {
       const b = selBlock(); document.execCommand("formatBlock", false, b && /^H2$/.test(b.tagName) ? "div" : "h2");
-    } else if (cmd === "ul") document.execCommand("insertUnorderedList");
+    } else if (cmd === "table") { if (!selCell()) insertTable(); }
+    else if (cmd === "ul") document.execCommand("insertUnorderedList");
     else if (cmd === "ol") document.execCommand("insertOrderedList");
     else if (cmd === "check") {
       const li = selLi(), ul = li && li.parentNode;
@@ -345,8 +357,56 @@
     ["strikeThrough", "<s>З</s>", "Зачеркнуть (Ctrl+Shift+X)"], ["mark", '<span class="mk">Маркер</span>', "Выделить маркером (Ctrl+Shift+H)"],
     ["color", '<span class="red">А</span>', "Красный текст"], ["|"], ["h", "Заголовок", "Заголовок (Ctrl+Alt+2)"],
     ["ul", "• Список", "Маркированный список (Ctrl+Shift+8)"], ["ol", "1. Список", "Нумерованный список (Ctrl+Shift+7)"],
-    ["check", "☑ Дела", "Чек-лист (Ctrl+Shift+9)"], ["|"], ["clear", "Очистить", "Убрать форматирование"]
+    ["check", "☑ Дела", "Чек-лист (Ctrl+Shift+9)"], ["table", "▦ Таблица", "Вставить таблицу"], ["|"], ["clear", "Очистить", "Убрать форматирование"]
   ];
+  const TABLE_TOOLS = [["rowAdd", "+ строка", "Добавить строку ниже"], ["colAdd", "+ столбец", "Добавить столбец справа"],
+    ["rowDel", "− строка", "Удалить строку"], ["colDel", "− столбец", "Удалить столбец"], ["tdel", "Удалить таблицу", "Удалить всю таблицу"]];
+  function selCell() {
+    const sel = getSelection(), ed = $("noteBody"); if (!sel.rangeCount || !ed) return null;
+    let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
+    const c = n && n.closest ? n.closest("td,th") : null;
+    return c && ed.contains(c) ? c : null;
+  }
+  function caretIn(cell, atEnd) {
+    const r = document.createRange(); r.selectNodeContents(cell); r.collapse(!atEnd);
+    const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  const newCell = tag => { const c = document.createElement(tag); c.innerHTML = "<br>"; return c; };
+  function insertTable() {
+    let h = '<table><tbody><tr><th><br></th><th><br></th><th><br></th></tr>';
+    for (let i = 0; i < 2; i++) h += "<tr><td><br></td><td><br></td><td><br></td></tr>";
+    h += "</tbody></table><div><br></div>";
+    const marker = "tbl-" + Date.now();
+    document.execCommand("insertHTML", false, h.replace("<table>", '<table data-new="' + marker + '">'));
+    const t = document.querySelector('table[data-new="' + marker + '"]');
+    if (t) { t.removeAttribute("data-new"); caretIn(t.querySelector("th"), false); }
+  }
+  function tableOp(cmd) {
+    const cell = selCell(); if (!cell) return;
+    const row = cell.parentNode, table = cell.closest("table"), idx = [...row.children].indexOf(cell);
+    const rows = [...table.querySelectorAll("tr")];
+    if (cmd === "rowAdd") {
+      const r = document.createElement("tr");
+      for (let i = 0; i < row.children.length; i++) r.append(newCell("td"));
+      row.after(r); caretIn(r.children[Math.min(idx, r.children.length - 1)]);
+    } else if (cmd === "colAdd") {
+      for (const r of rows) { const ref = r.children[idx]; const c = newCell(ref && ref.tagName === "TH" ? "th" : "td"); ref ? ref.after(c) : r.append(c); }
+      caretIn(row.children[idx + 1]);
+    } else if (cmd === "rowDel") {
+      if (rows.length <= 1) return tableOp("tdel");
+      const next = row.nextElementSibling || row.previousElementSibling; row.remove();
+      caretIn(next.children[Math.min(idx, next.children.length - 1)]);
+    } else if (cmd === "colDel") {
+      if (row.children.length <= 1) return tableOp("tdel");
+      for (const r of rows) r.children[idx] && r.children[idx].remove();
+      caretIn(row.children[Math.max(0, idx - 1)]);
+    } else if (cmd === "tdel") {
+      const after = table.nextElementSibling; table.remove();
+      if (after) caretIn(after); else $("noteBody").focus();
+    }
+    $("noteBody").dispatchEvent(new Event("input", { bubbles: true }));
+    updateToolbar();
+  }
   function buildToolbar() {
     const tb = document.createElement("div"); tb.className = "fmtbar"; tb.setAttribute("role", "toolbar"); tb.setAttribute("aria-label", "Форматирование");
     for (const [cmd, label, title] of TOOLS) {
@@ -356,10 +416,19 @@
       b.addEventListener("click", () => applyFmt(cmd));
       tb.append(b);
     }
+    const tt = document.createElement("div"); tt.className = "tbl-tools"; tt.hidden = true;
+    for (const [cmd, label, title] of TABLE_TOOLS) {
+      const b = document.createElement("button"); b.type = "button"; b.className = "fbtn tb" + (cmd === "tdel" ? " danger" : ""); b.textContent = label; b.title = title;
+      b.addEventListener("mousedown", e => e.preventDefault());
+      b.addEventListener("click", () => tableOp(cmd));
+      tt.append(b);
+    }
+    tb.append(tt);
     return tb;
   }
   function updateToolbar() {
     const tb = document.querySelector(".fmtbar"); if (!tb || !inEditor()) return;
+    const tt = tb.querySelector(".tbl-tools"); if (tt) tt.hidden = !selCell();
     for (const b of tb.querySelectorAll(".fbtn")) {
       const c = b.dataset.cmd; let on = false;
       try {

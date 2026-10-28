@@ -175,6 +175,17 @@ input,textarea{font:inherit}
   .fmtbar::-webkit-scrollbar{display:none}
   .fbtn{padding:8px 11px;flex:none}
 }
+
+/* ---------- таблицы ---------- */
+.rich table{border-collapse:collapse;margin:10px 0;display:block;overflow-x:auto;max-width:100%;font-family:var(--f-ui);font-size:15px;line-height:1.45}
+.rich th,.rich td{border:1px solid var(--line);padding:7px 10px;min-width:90px;overflow-wrap:normal;word-break:normal;vertical-align:top;text-align:left}
+.rich th{background:var(--rail);font-weight:600}
+.rich tr:nth-child(even) td{background:color-mix(in srgb,var(--rail) 35%,transparent)}
+.tbl-tools{display:flex;gap:4px;flex-wrap:wrap;width:100%;padding-top:4px;border-top:1px dashed var(--line);margin-top:2px}
+.tbl-tools[hidden]{display:none!important}
+.fbtn.tb{font-size:13px;border:1px solid var(--line)}
+.fbtn.danger{color:var(--danger);border-color:var(--danger)}
+@media (max-width:720px){.tbl-tools{width:auto;border-top:0;border-left:1px dashed var(--line);padding:0 0 0 6px;margin:0;flex-wrap:nowrap}}
 </style>
 </head>
 <body>
