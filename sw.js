@@ -1,4 +1,4 @@
-const CACHE = "zametki-v2";
+const CACHE = "zametki-v3";
 const SHELL = ["./", "index.html", "app.js", "t9.js", "dict.js", "vendor-supabase.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png", "favicon.png"];
 self.addEventListener("install", e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });

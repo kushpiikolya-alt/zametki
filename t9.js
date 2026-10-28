@@ -77,23 +77,56 @@
     return list.slice(0, 3).map(w => keepCase(word, w));
   }
 
-  // ---------- работа с полем ввода ----------
+  // ---------- работа с полем ввода (input, textarea и форматируемый текст) ----------
   let bar, btn, busy = false, last = null, active = null, sugg = [], noteTimer;
   const WORD = /[A-Za-zА-Яа-яЁё;'\[\],.`-]*$/;
   const LETTERS = /[A-Za-zА-Яа-яЁё][A-Za-zА-Яа-яЁё-]*$/;
+  const isRich = el => el.isContentEditable;
+  const BLOCK = /^(DIV|P|LI|H1|H2|H3|BLOCKQUOTE|PRE)$/;
 
-  function insert(el, start, end, text, caret) {
-    busy = true;
-    el.focus(); el.setSelectionRange(start, end);
-    if (!document.execCommand("insertText", false, text)) el.setRangeText(text, start, end, "end");
-    if (caret != null) el.setSelectionRange(caret, caret);
-    el.dispatchEvent(new Event("input", { bubbles: true }));
-    busy = false;
+  // текст до курсора (в пределах абзаца) и после курсора (в пределах текстового узла)
+  function ctx(el) {
+    if (!isRich(el)) {
+      if (el.selectionStart !== el.selectionEnd) return null;
+      const pos = el.selectionStart;
+      return { before: el.value.slice(0, pos), after: el.value.slice(pos), nodeBefore: el.value.slice(0, pos) };
+    }
+    const sel = getSelection();
+    if (!sel.rangeCount || !sel.isCollapsed || !el.contains(sel.focusNode)) return null;
+    const node = sel.focusNode, off = sel.focusOffset;
+    let block = node.nodeType === 1 ? node : node.parentNode;
+    while (block && block !== el && !BLOCK.test(block.nodeName)) block = block.parentNode;
+    const r = document.createRange(); r.setStart(block || el, 0); r.setEnd(node, off);
+    const before = r.toString();
+    const isText = node.nodeType === 3;
+    return { before, after: isText ? node.data.slice(off) : "", nodeBefore: isText ? node.data.slice(0, off) : "" };
+  }
+  // заменить текст между (курсор - fromBack) и (курсор - toBack); курсор остаётся там же относительно текста
+  function replaceBack(el, fromBack, toBack, text, extraAfter) {
+    busy = true; extraAfter = extraAfter || 0;
+    try {
+      if (!isRich(el)) {
+        const pos = el.selectionStart, start = pos - fromBack, end = pos - toBack + extraAfter;
+        el.focus(); el.setSelectionRange(start, end);
+        if (!document.execCommand("insertText", false, text)) el.setRangeText(text, start, end, "end");
+        const c = start + text.length + toBack; el.setSelectionRange(c, c);
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      } else {
+        const sel = getSelection(), node = sel.focusNode, off = sel.focusOffset;
+        if (node.nodeType !== 3 || off < fromBack) return false;
+        const r = document.createRange();
+        r.setStart(node, off - fromBack); r.setEnd(node, Math.min(node.data.length, off - toBack + extraAfter));
+        sel.removeAllRanges(); sel.addRange(r);
+        document.execCommand("insertText", false, text);
+        for (let k = 0; k < toBack; k++) sel.modify("move", "forward", "character");
+      }
+      return true;
+    } finally { busy = false; }
   }
   function currentWord(el) {
-    const pos = el.selectionStart, before = el.value.slice(0, pos);
-    const m = before.match(LETTERS);
-    return m ? { word: m[0], start: pos - m[0].length, end: pos } : null;
+    const c = ctx(el); if (!c) return null;
+    const m = c.nodeBefore.match(LETTERS);
+    return m ? { word: m[0], after: c.after } : null;
   }
 
   function render(note) {
@@ -121,29 +154,27 @@
   function accept(i) {
     const el = active, cw = el && currentWord(el);
     if (!cw || !sugg[i]) return;
-    const after = el.value.slice(cw.end);
-    const tail = (after.match(/^[A-Za-zА-Яа-яЁё-]*/) || [""])[0];
-    const space = /^\s/.test(after.slice(tail.length)) ? "" : " ";
-    insert(el, cw.start, cw.end + tail.length, sugg[i] + space);
+    const tail = (cw.after.match(/^[A-Za-zА-Яа-яЁё-]*/) || [""])[0];
+    const space = /^\s/.test(cw.after.slice(tail.length)) ? "" : " ";
+    replaceBack(el, cw.word.length, 0, sugg[i] + space, tail.length);
     user.set(sugg[i].toLowerCase(), (user.get(sugg[i].toLowerCase()) || 0) + 1);
     sugg = []; render();
   }
 
   function onInput(e) {
     if (busy || !on) return;
-    const el = e.target, pos = el.selectionStart;
+    const el = e.currentTarget;
     if (e.inputType === "insertText" && e.data) {
-      const ch = e.data;
+      const ch = e.data, c = ctx(el);
+      if (!c) { last = null; return refresh(); }
       // заглавная в начале предложения
       if (ch.length === 1 && /[a-zа-яё]/.test(ch)) {
-        const before = el.value.slice(0, pos - 1);
-        if (/(^|[.!?…]\s+|\n\s*)$/.test(before)) {
-          insert(el, pos - 1, pos, ch.toUpperCase());
-        }
+        const before = c.before.slice(0, -1);
+        if (/(^|[.!?…]\s+|\n\s*)$/.test(before.replace(/ /g, " "))) replaceBack(el, 1, 0, ch.toUpperCase());
       }
       // автоисправление после пробела или знака препинания
-      if (/^[\s.,!?;:)…]$/.test(ch)) {
-        const before = el.value.slice(0, pos - 1);
+      if (/^[\s .,!?;:)…]$/.test(ch)) {
+        const before = c.nodeBefore.slice(0, -1);
         const full = (before.match(WORD) || [""])[0];
         let raw = (before.match(LETTERS) || [""])[0], fixed = null;
         if (full !== raw && /^[a-z;'\[\],.`]+$/i.test(full) && !/^[.,!?;:]$/.test(ch)) {
@@ -152,10 +183,8 @@
         }
         if (raw && raw.length >= 2) {
           if (!fixed) fixed = correct(raw);
-          if (fixed && fixed !== raw) {
-            const s = pos - 1 - raw.length;
-            insert(el, s, pos - 1, fixed, s + fixed.length + 1);
-            last = { el, start: s, fixed, raw, delim: ch };
+          if (fixed && fixed !== raw && replaceBack(el, raw.length + 1, 1, fixed)) {
+            last = { el, fixed, raw, delim: ch };
             sugg = []; render(raw + " → " + fixed + "  ·  Backspace — вернуть");
             clearTimeout(noteTimer); noteTimer = setTimeout(() => { if (last) { last = null; render(); } }, 3500);
             return;
@@ -169,19 +198,19 @@
 
   function onKey(e) {
     if (!on) return;
-    const el = e.target;
+    const el = e.currentTarget;
     if (e.key === "Backspace" && last && last.el === el) {
-      const end = last.start + last.fixed.length + last.delim.length;
-      if (el.selectionStart === end && el.selectionEnd === end && el.value.slice(last.start, end) === last.fixed + last.delim) {
+      const c = ctx(el), tailTxt = last.fixed + last.delim;
+      if (c && c.nodeBefore.endsWith(tailTxt)) {
         e.preventDefault();
         const w = last.raw.toLowerCase(); learned.add(w); lsSet("t9.learned", [...learned]); user.set(w, (user.get(w) || 0) + 3);
-        insert(el, last.start, end, last.raw);
+        replaceBack(el, tailTxt.length, 0, last.raw);
         last = null; refresh(); return;
       }
     }
     if (e.key === "Tab" && !e.shiftKey && sugg.length && currentWord(el)) { e.preventDefault(); accept(0); return; }
     if (e.altKey && (e.key === "2" || e.key === "3") && sugg[+e.key - 1]) { e.preventDefault(); accept(+e.key - 1); return; }
-    if (e.key === "Escape" && sugg.length) { sugg = []; render(); }
+    if (e.key === "Escape" && sugg.length) { e.stopPropagation(); sugg = []; render(); }
   }
 
   function setOn(v) {
@@ -193,12 +222,13 @@
   window.T9 = {
     attach(el) {
       el.spellcheck = true; el.lang = "ru";
-      el.setAttribute("autocomplete", "off");
+      if (!isRich(el)) el.setAttribute("autocomplete", "off");
       el.addEventListener("input", onInput);
       el.addEventListener("keydown", onKey);
       el.addEventListener("focus", () => { active = el; refresh(); });
       el.addEventListener("click", () => { active = el; refresh(); });
-      el.addEventListener("blur", () => setTimeout(() => { if (document.activeElement !== el && active === el) { active = null; sugg = []; render(); } }, 150));
+      el.addEventListener("keyup", e => { if (/^Arrow|Home|End/.test(e.key)) refresh(); });
+      el.addEventListener("blur", () => setTimeout(() => { if (!el.contains(document.activeElement) && document.activeElement !== el && active === el) { active = null; sugg = []; render(); } }, 150));
     },
     init() {
       bar = document.getElementById("t9bar"); btn = document.getElementById("t9Btn");

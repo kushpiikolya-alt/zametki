@@ -21,7 +21,43 @@
     const y = new Date(now - DAY); if (d.toDateString() === y.toDateString()) return "вчера, " + d.toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" });
     return d.toLocaleDateString("ru-RU", { day: "numeric", month: "short", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" });
   };
-  const lines = s => (s || "").split("\n").filter(l => l.trim());
+  // ---------- форматированный текст ----------
+  const isHtml = b => /^\s*</.test(b || "") && /<\/?(div|p|br|b|strong|i|em|u|s|strike|mark|ul|ol|li|h[1-3]|span|blockquote)\b/i.test(b);
+  const esc = t => t.replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+  const TAGS = new Set(["B","STRONG","I","EM","U","S","STRIKE","MARK","BR","DIV","P","UL","OL","LI","H1","H2","H3","BLOCKQUOTE","SPAN","FONT"]);
+  const COLOR = /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|transparent|[a-z]+)$/i;
+  function sanitize(html) {
+    const t = document.createElement("template"); t.innerHTML = html;
+    (function walk(node) {
+      for (const el of [...node.children]) {
+        if (!TAGS.has(el.tagName)) { if (/^(SCRIPT|STYLE|IFRAME|OBJECT|EMBED|svg|math)$/i.test(el.tagName)) el.remove(); else { walk(el); el.replaceWith(...el.childNodes); } continue; }
+        const keep = {};
+        if (/^(SPAN|FONT|MARK|B|STRONG|I|EM|U|S|STRIKE)$/.test(el.tagName)) {
+          const bg = el.style.backgroundColor, fg = el.style.color || el.getAttribute("color");
+          if (bg && COLOR.test(bg.trim())) keep.style = "background-color:" + bg;
+          if (fg && COLOR.test(fg.trim())) keep.style = (keep.style ? keep.style + ";" : "") + "color:" + fg;
+          if (el.style.fontWeight === "bold" || +el.style.fontWeight >= 600) keep.style = (keep.style ? keep.style + ";" : "") + "font-weight:700";
+          if (el.style.fontStyle === "italic") keep.style = (keep.style ? keep.style + ";" : "") + "font-style:italic";
+          const td = el.style.textDecorationLine || el.style.textDecoration || "";
+          if (/underline|line-through/.test(td)) keep.style = (keep.style ? keep.style + ";" : "") + "text-decoration:" + td.match(/underline|line-through/g).join(" ");
+        }
+        if (el.tagName === "UL" && el.classList.contains("checklist")) keep.class = "checklist";
+        if (el.tagName === "LI" && el.dataset.done === "1") keep["data-done"] = "1";
+        for (const a of [...el.attributes]) el.removeAttribute(a.name);
+        for (const k in keep) el.setAttribute(k, keep[k]);
+        walk(el);
+      }
+    })(t.content);
+    return t.innerHTML;
+  }
+  const toHtml = b => isHtml(b) ? sanitize(b) : (b || "").split("\n").map(l => "<div>" + (l ? esc(l) : "<br>") + "</div>").join("");
+  function plain(b) {
+    if (!isHtml(b)) return b || "";
+    const t = document.createElement("template");
+    t.innerHTML = b.replace(/<br\s*\/?>/gi, "\n").replace(/<\/(div|p|li|h[1-3]|blockquote)>/gi, "\n");
+    return t.content.textContent.replace(/ /g, " ").replace(/\n{3,}/g, "\n\n");
+  }
+  const lines = s => plain(s).split("\n").filter(l => l.trim());
   const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, c => (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)));
   function toast(t) { const el = $("toast"); el.textContent = t; el.hidden = false; clearTimeout(toast.t); toast.t = setTimeout(() => el.hidden = true, 2600); }
   function setSync(state, text) { $("dot").className = "dot " + (state || ""); $("syncText").textContent = text; }
@@ -29,7 +65,7 @@
   function saveCache() {
     const arr = [...notes.values()];
     ls.set(cacheKey(), arr);
-    ls.set("notes.v1", arr.filter(n => !n.deleted).map(n => ({ title: n.title, body: n.body })));   // T9 learns words from this
+    ls.set("notes.v1", arr.filter(n => !n.deleted).map(n => ({ title: n.title, body: plain(n.body) })));   // T9 learns words from this
   }
   const fromRow = r => ({ id: r.id, title: r.title || "", body: r.body || "", pinned: !!r.pinned, updated: Date.parse(r.updated_at) || Date.now(), deleted: r.deleted_at ? Date.parse(r.deleted_at) : null, dirty: false });
   const toRow = n => ({ id: n.id, user_id: uid, title: n.title, body: n.body, pinned: n.pinned, updated_at: new Date(n.updated).toISOString(), deleted_at: n.deleted ? new Date(n.deleted).toISOString() : null });
@@ -163,7 +199,7 @@
   const editingNow = () => { const a = document.activeElement; return a && (a.id === "noteTitle" || a.id === "noteBody"); };
   function visible() {
     const q = query.trim().toLowerCase();
-    return [...notes.values()].filter(n => (view === "trash" ? n.deleted : !n.deleted) && (!q || (n.title + " " + n.body).toLowerCase().includes(q)))
+    return [...notes.values()].filter(n => (view === "trash" ? n.deleted : !n.deleted) && (!q || (n.title + " " + plain(n.body)).toLowerCase().includes(q)))
       .sort((a, b) => view === "trash" ? b.deleted - a.deleted : (b.pinned - a.pinned) || (b.updated - a.updated));
   }
   function renderList() {
@@ -218,17 +254,131 @@
     $("pinBtn").textContent = n.pinned ? "Открепить" : "Закрепить"; $("pinBtn").classList.toggle("on", n.pinned);
     $("meta").textContent = "Изменено " + fmt(n.updated);
     const ti = document.createElement("input"); ti.className = "title"; ti.id = "noteTitle"; ti.placeholder = "Заголовок"; ti.value = n.title; ti.enterKeyHint = "next";
-    const ta = document.createElement("textarea"); ta.className = "body"; ta.id = "noteBody"; ta.placeholder = "Начните писать…"; ta.value = n.body;
+    const tb = buildToolbar();
+    const ta = document.createElement("div"); ta.className = "body rich"; ta.id = "noteBody"; ta.contentEditable = "true";
+    ta.setAttribute("role", "textbox"); ta.setAttribute("aria-multiline", "true"); ta.dataset.placeholder = "Начните писать…";
+    ta.innerHTML = toHtml(n.body);
+    const markEmpty = () => ta.classList.toggle("is-empty", !ta.textContent.trim() && !ta.querySelector("li"));
+    markEmpty();
+    let bodyTimer;
+    const saveBody = () => { clearTimeout(bodyTimer); markEmpty(); bodyTimer = setTimeout(() => change(n.id, { body: ta.innerHTML }), 250); };
     ti.addEventListener("input", () => change(n.id, { title: ti.value }));
     ti.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ta.focus(); } });
-    ta.addEventListener("input", () => change(n.id, { body: ta.value }));
-    inner.append(ti, ta);
+    ta.addEventListener("input", e => {
+      if (e.inputType === "insertParagraph") {           // новая строка чек-листа — без галочки
+        const li = selLi(); if (li && li.dataset.done && !li.textContent.trim()) delete li.dataset.done;
+      }
+      saveBody();
+    });
+    ta.addEventListener("paste", e => {
+      const html = e.clipboardData.getData("text/html"), txt = e.clipboardData.getData("text/plain");
+      e.preventDefault();
+      if (html) document.execCommand("insertHTML", false, sanitize(html));
+      else document.execCommand("insertText", false, txt);
+    });
+    ta.addEventListener("click", e => {
+      const li = e.target.closest && e.target.closest("ul.checklist > li");
+      if (li && ta.contains(li) && e.clientX - li.getBoundingClientRect().left < 28) {
+        if (li.dataset.done) delete li.dataset.done; else li.dataset.done = "1";
+        saveBody();
+      }
+    });
+    ta.addEventListener("keydown", e => {
+      const k = e.code, mod = e.ctrlKey || e.metaKey;
+      if (mod && e.shiftKey && k === "KeyH") { e.preventDefault(); applyFmt("mark"); }
+      else if (mod && e.shiftKey && k === "KeyX") { e.preventDefault(); applyFmt("strikeThrough"); }
+      else if (mod && e.shiftKey && k === "Digit7") { e.preventDefault(); applyFmt("ol"); }
+      else if (mod && e.shiftKey && k === "Digit8") { e.preventDefault(); applyFmt("ul"); }
+      else if (mod && e.shiftKey && k === "Digit9") { e.preventDefault(); applyFmt("check"); }
+      else if (mod && e.altKey && k === "Digit2") { e.preventDefault(); applyFmt("h"); }
+    });
+    inner.append(tb, ti, ta);
     if (window.T9) { T9.attach(ti); T9.attach(ta); }
   }
+  function selLi() {
+    const sel = getSelection(); if (!sel.rangeCount) return null;
+    let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
+    return n && n.closest ? n.closest("li") : null;
+  }
+  function selBlock() {
+    const sel = getSelection(); if (!sel.rangeCount) return null;
+    let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
+    return n && n.closest ? n.closest("h1,h2,h3,div,p,li") : null;
+  }
+  function inEditor() { const sel = getSelection(), ed = $("noteBody"); return ed && sel.rangeCount && ed.contains(sel.anchorNode); }
+  function applyFmt(cmd) {
+    const ed = $("noteBody"); if (!ed) return;
+    if (!inEditor()) { ed.focus(); const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); const s2 = getSelection(); s2.removeAllRanges(); s2.addRange(r); }
+    document.execCommand("styleWithCSS", false, false);
+    if (cmd === "mark") {
+      const sel = getSelection(); let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
+      const marked = n && n.closest && n.closest('span[style*="background"], mark, font[style*="background"]');
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand("hiliteColor", false, marked && ed.contains(marked) ? "transparent" : "#ffe36b");
+      document.execCommand("styleWithCSS", false, false);
+    } else if (cmd === "color") {
+      document.execCommand("styleWithCSS", false, true);
+      const sel = getSelection(); let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
+      const red = n && n.closest && n.closest('span[style*="color"]') && /rgb\(220, 53, 34\)/.test(n.closest('span[style*="color"]').style.color);
+      document.execCommand("foreColor", false, red ? "inherit" : "#dc3522");
+      document.execCommand("styleWithCSS", false, false);
+    } else if (cmd === "h") {
+      const b = selBlock(); document.execCommand("formatBlock", false, b && /^H2$/.test(b.tagName) ? "div" : "h2");
+    } else if (cmd === "ul") document.execCommand("insertUnorderedList");
+    else if (cmd === "ol") document.execCommand("insertOrderedList");
+    else if (cmd === "check") {
+      const li = selLi(), ul = li && li.parentNode;
+      if (ul && ul.classList && ul.classList.contains("checklist")) { document.execCommand("insertUnorderedList"); }
+      else {
+        if (!(ul && ul.tagName === "UL")) document.execCommand("insertUnorderedList");
+        const li2 = selLi(); if (li2 && li2.parentNode.tagName === "UL") li2.parentNode.classList.add("checklist");
+        else if (li2) { document.execCommand("insertUnorderedList"); const li3 = selLi(); li3 && li3.parentNode.classList.add("checklist"); }
+      }
+    } else if (cmd === "clear") { document.execCommand("removeFormat"); document.execCommand("styleWithCSS", false, true); document.execCommand("hiliteColor", false, "transparent"); document.execCommand("styleWithCSS", false, false);
+      const b = selBlock(); if (b && /^H[1-3]$/.test(b.tagName)) document.execCommand("formatBlock", false, "div"); }
+    else document.execCommand(cmd);
+    ed.dispatchEvent(new Event("input", { bubbles: true }));
+    updateToolbar();
+  }
+  const TOOLS = [
+    ["bold", "<b>Ж</b>", "Жирный (Ctrl+B)"], ["italic", "<i>К</i>", "Курсив (Ctrl+I)"], ["underline", "<u>Ч</u>", "Подчеркнуть (Ctrl+U)"],
+    ["strikeThrough", "<s>З</s>", "Зачеркнуть (Ctrl+Shift+X)"], ["mark", '<span class="mk">Маркер</span>', "Выделить маркером (Ctrl+Shift+H)"],
+    ["color", '<span class="red">А</span>', "Красный текст"], ["|"], ["h", "Заголовок", "Заголовок (Ctrl+Alt+2)"],
+    ["ul", "• Список", "Маркированный список (Ctrl+Shift+8)"], ["ol", "1. Список", "Нумерованный список (Ctrl+Shift+7)"],
+    ["check", "☑ Дела", "Чек-лист (Ctrl+Shift+9)"], ["|"], ["clear", "Очистить", "Убрать форматирование"]
+  ];
+  function buildToolbar() {
+    const tb = document.createElement("div"); tb.className = "fmtbar"; tb.setAttribute("role", "toolbar"); tb.setAttribute("aria-label", "Форматирование");
+    for (const [cmd, label, title] of TOOLS) {
+      if (cmd === "|") { const s = document.createElement("span"); s.className = "sep"; tb.append(s); continue; }
+      const b = document.createElement("button"); b.type = "button"; b.className = "fbtn"; b.dataset.cmd = cmd; b.innerHTML = label; b.title = title; b.setAttribute("aria-label", title);
+      b.addEventListener("mousedown", e => e.preventDefault());       // не терять выделение
+      b.addEventListener("click", () => applyFmt(cmd));
+      tb.append(b);
+    }
+    return tb;
+  }
+  function updateToolbar() {
+    const tb = document.querySelector(".fmtbar"); if (!tb || !inEditor()) return;
+    for (const b of tb.querySelectorAll(".fbtn")) {
+      const c = b.dataset.cmd; let on = false;
+      try {
+        if (["bold","italic","underline","strikeThrough"].includes(c)) on = document.queryCommandState(c);
+        else if (c === "ul") on = document.queryCommandState("insertUnorderedList") && !(selLi() && selLi().parentNode.classList.contains("checklist"));
+        else if (c === "ol") on = document.queryCommandState("insertOrderedList");
+        else if (c === "check") on = !!(selLi() && selLi().parentNode.classList.contains("checklist"));
+        else if (c === "h") on = !!(selBlock() && selBlock().tagName === "H2");
+      } catch (e) {}
+      b.classList.toggle("on", on);
+    }
+  }
+  document.addEventListener("selectionchange", updateToolbar);
+  try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch (e) {}
+
   function open(id) {
     currentId = id; $("app").classList.add("editing"); renderList(); renderEditor();
     const n = notes.get(id);
-    if (matchMedia("(pointer:fine)").matches || (n && !n.title && !n.body)) setTimeout(() => { const el = n && !n.title && !n.body ? $("noteTitle") : $("noteBody"); el && el.focus(); }, 30);
+    if (matchMedia("(pointer:fine)").matches || (n && !n.title && !plain(n.body).trim())) setTimeout(() => { const el = n && !n.title && !plain(n.body).trim() ? $("noteTitle") : $("noteBody"); el && el.focus(); }, 30);
   }
   function create() {
     if (view === "trash") { view = "all"; }
@@ -238,7 +388,7 @@
   function closeEditor() {
     const n = currentId && notes.get(currentId);
     $("app").classList.remove("editing");
-    if (n && !n.title.trim() && !n.body.trim() && !n.deleted) { notes.delete(n.id); saveCache(); sb.from("notes").delete().eq("id", n.id).then(() => {}); currentId = null; renderEditor(); }
+    if (n && !n.title.trim() && !plain(n.body).trim() && !n.deleted) { notes.delete(n.id); saveCache(); sb.from("notes").delete().eq("id", n.id).then(() => {}); currentId = null; renderEditor(); }
     renderList();
   }
 
