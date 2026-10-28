@@ -1,4 +1,4 @@
-const CACHE = "zametki-v5";
+const CACHE = "zametki-v6";
 const SHELL = ["./", "index.html", "app.js", "t9.js", "dict.js", "vendor-supabase.js", "manifest.webmanifest",
   "icon-192.png", "icon-512.png", "apple-touch-icon.png", "favicon.png"];
 self.addEventListener("install", e => {

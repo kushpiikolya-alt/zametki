@@ -262,25 +262,29 @@
     markEmpty();
     let bodyTimer;
     const saveBody = () => { clearTimeout(bodyTimer); markEmpty(); bodyTimer = setTimeout(() => change(n.id, { body: ta.innerHTML }), 250); };
-    ti.addEventListener("input", () => change(n.id, { title: ti.value }));
+    // ---- история изменений: отменить / вернуть ----
+    hist = makeHistory(n, ti, ta, () => { markEmpty(); clearTimeout(bodyTimer); change(n.id, { title: ti.value, body: ta.innerHTML }); });
+    ti.addEventListener("input", e => { change(n.id, { title: ti.value }); hist.record(!e.inputType); });
     ti.addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); ta.focus(); } });
     ta.addEventListener("input", e => {
       if (e.inputType === "insertParagraph") {           // новая строка чек-листа — без галочки
         const li = selLi(); if (li && li.dataset.done && !li.textContent.trim()) delete li.dataset.done;
       }
       saveBody();
+      if (!muteHist) hist.record(!e.inputType || /^(insertFromPaste|insertParagraph|deleteByCut|insertFromDrop|format)/.test(e.inputType));
     });
     ta.addEventListener("paste", e => {
       const html = e.clipboardData.getData("text/html"), txt = e.clipboardData.getData("text/plain");
-      e.preventDefault();
+      e.preventDefault(); hist.flush();
       if (html) document.execCommand("insertHTML", false, sanitize(html));
       else document.execCommand("insertText", false, txt);
     });
     ta.addEventListener("click", e => {
       const li = e.target.closest && e.target.closest("ul.checklist > li");
       if (li && ta.contains(li) && e.clientX - li.getBoundingClientRect().left < 28) {
+        hist.flush();
         if (li.dataset.done) delete li.dataset.done; else li.dataset.done = "1";
-        saveBody();
+        saveBody(); hist.record(true);
       }
     });
     ta.addEventListener("keydown", e => {
@@ -306,6 +310,59 @@
     inner.append(tb, ti, ta);
     if (window.T9) { T9.attach(ti); T9.attach(ta); }
   }
+  let hist = null, muteHist = false;
+  function caretOffset(root) {
+    const sel = getSelection(); if (!sel.rangeCount || !root.contains(sel.anchorNode)) return null;
+    const r = document.createRange(); r.selectNodeContents(root); r.setEnd(sel.focusNode, sel.focusOffset);
+    return r.toString().length;
+  }
+  function setCaretOffset(root, off) {
+    const w = document.createTreeWalker(root, NodeFilter.SHOW_TEXT); let node, left = off;
+    while ((node = w.nextNode())) { if (left <= node.data.length) break; left -= node.data.length; }
+    const r = document.createRange();
+    if (node) r.setStart(node, Math.max(0, left)); else { r.selectNodeContents(root); r.collapse(false); }
+    r.collapse(true); const s = getSelection(); s.removeAllRanges(); s.addRange(r);
+  }
+  function makeHistory(n, ti, ta, onRestore) {
+    const snap = () => ({ title: ti.value, html: ta.innerHTML, where: document.activeElement === ti ? "t" : "b",
+      caret: document.activeElement === ti ? ti.selectionStart : caretOffset(ta) });
+    const stack = [snap()]; let i = 0, timer = null;
+    function commit() {
+      clearTimeout(timer); timer = null;
+      const s = snap(), top = stack[i];
+      if (top && top.html === s.html && top.title === s.title) { top.caret = s.caret; top.where = s.where; return; }
+      stack.splice(i + 1); stack.push(s); if (stack.length > 300) stack.shift(); i = stack.length - 1; updateUndoBtns();
+    }
+    function restore(s) {
+      ti.value = s.title; ta.innerHTML = s.html; onRestore();
+      if (s.where === "t") { ti.focus(); const c = s.caret == null ? ti.value.length : s.caret; ti.setSelectionRange(c, c); }
+      else { ta.focus(); setCaretOffset(ta, s.caret == null ? ta.textContent.length : s.caret); }
+      renderList(); updateUndoBtns(); updateToolbar();
+    }
+    const api = {
+      flush() { if (timer) commit(); },
+      record(now) { if (now) { if (timer) commit(); commit(); } else { clearTimeout(timer); timer = setTimeout(commit, 600); } },
+      undo() { if (timer) commit(); if (i > 0) { i--; restore(stack[i]); toast("Отменено"); } },
+      redo() { if (timer) commit(); if (i < stack.length - 1) { i++; restore(stack[i]); toast("Возвращено"); } },
+      get canUndo() { return i > 0 || !!timer; }, get canRedo() { return i < stack.length - 1 && !timer; }
+    };
+    return api;
+  }
+  function updateUndoBtns() {
+    const u = document.querySelector('.fbtn[data-cmd="undo"]'), r = document.querySelector('.fbtn[data-cmd="redo"]');
+    if (u) u.disabled = !(hist && hist.canUndo); if (r) r.disabled = !(hist && hist.canRedo);
+  }
+  document.addEventListener("keydown", e => {
+    const a = document.activeElement; if (!hist || !a || (a.id !== "noteBody" && a.id !== "noteTitle")) return;
+    if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+    if (e.code === "KeyZ" && !e.shiftKey) { e.preventDefault(); hist.undo(); }
+    else if (e.code === "KeyY" || (e.code === "KeyZ" && e.shiftKey)) { e.preventDefault(); hist.redo(); }
+  }, true);
+  document.addEventListener("beforeinput", e => {           // отмена жестом / из меню системы
+    const a = document.activeElement; if (!hist || !a || (a.id !== "noteBody" && a.id !== "noteTitle")) return;
+    if (e.inputType === "historyUndo") { e.preventDefault(); hist.undo(); }
+    else if (e.inputType === "historyRedo") { e.preventDefault(); hist.redo(); }
+  }, true);
   function selLi() {
     const sel = getSelection(); if (!sel.rangeCount) return null;
     let n = sel.anchorNode; if (n && n.nodeType === 3) n = n.parentNode;
@@ -318,6 +375,7 @@
   }
   function inEditor() { const sel = getSelection(), ed = $("noteBody"); return ed && sel.rangeCount && ed.contains(sel.anchorNode); }
   function applyFmt(cmd) {
+    if (hist) hist.flush();
     const ed = $("noteBody"); if (!ed) return;
     if (!inEditor()) { ed.focus(); const r = document.createRange(); r.selectNodeContents(ed); r.collapse(false); const s2 = getSelection(); s2.removeAllRanges(); s2.addRange(r); }
     document.execCommand("styleWithCSS", false, false);
@@ -353,6 +411,7 @@
     updateToolbar();
   }
   const TOOLS = [
+    ["undo", "↶", "Отменить (Ctrl+Z)"], ["redo", "↷", "Вернуть (Ctrl+Y)"], ["|"],
     ["bold", "<b>Ж</b>", "Жирный (Ctrl+B)"], ["italic", "<i>К</i>", "Курсив (Ctrl+I)"], ["underline", "<u>Ч</u>", "Подчеркнуть (Ctrl+U)"],
     ["strikeThrough", "<s>З</s>", "Зачеркнуть (Ctrl+Shift+X)"], ["mark", '<span class="mk">Маркер</span>', "Выделить маркером (Ctrl+Shift+H)"],
     ["color", '<span class="red">А</span>', "Красный текст"], ["|"], ["h", "Заголовок", "Заголовок (Ctrl+Alt+2)"],
@@ -377,11 +436,13 @@
     for (let i = 0; i < 2; i++) h += "<tr><td><br></td><td><br></td><td><br></td></tr>";
     h += "</tbody></table><div><br></div>";
     const marker = "tbl-" + Date.now();
-    document.execCommand("insertHTML", false, h.replace("<table>", '<table data-new="' + marker + '">'));
+    muteHist = true;
+    try { document.execCommand("insertHTML", false, h.replace("<table>", '<table data-new="' + marker + '">')); } finally { muteHist = false; }
     const t = document.querySelector('table[data-new="' + marker + '"]');
     if (t) { t.removeAttribute("data-new"); caretIn(t.querySelector("th"), false); }
   }
   function tableOp(cmd) {
+    if (hist) hist.flush();
     const cell = selCell(); if (!cell) return;
     const row = cell.parentNode, table = cell.closest("table"), idx = [...row.children].indexOf(cell);
     const rows = [...table.querySelectorAll("tr")];
@@ -413,7 +474,7 @@
       if (cmd === "|") { const s = document.createElement("span"); s.className = "sep"; tb.append(s); continue; }
       const b = document.createElement("button"); b.type = "button"; b.className = "fbtn"; b.dataset.cmd = cmd; b.innerHTML = label; b.title = title; b.setAttribute("aria-label", title);
       b.addEventListener("mousedown", e => e.preventDefault());       // не терять выделение
-      b.addEventListener("click", () => applyFmt(cmd));
+      b.addEventListener("click", () => cmd === "undo" ? hist && hist.undo() : cmd === "redo" ? hist && hist.redo() : applyFmt(cmd));
       tb.append(b);
     }
     const tt = document.createElement("div"); tt.className = "tbl-tools"; tt.hidden = true;
@@ -424,6 +485,7 @@
       tt.append(b);
     }
     tb.append(tt);
+    setTimeout(updateUndoBtns);
     return tb;
   }
   function updateToolbar() {

@@ -152,6 +152,8 @@ input,textarea{font:inherit}
   background:color-mix(in srgb,var(--sheet) 92%,transparent);backdrop-filter:blur(6px);border:1px solid var(--line);border-radius:10px}
 .fbtn{border:0;background:transparent;border-radius:7px;padding:6px 9px;font-size:14px;color:var(--fg);min-width:34px;line-height:1.2}
 .fbtn:hover{background:var(--rail)}
+.fbtn:disabled{opacity:.35;cursor:default;background:transparent}
+.fbtn[data-cmd="undo"],.fbtn[data-cmd="redo"]{font-size:18px;padding:3px 9px}
 .fbtn.on{background:var(--accent-soft);color:var(--accent)}
 .fbtn .mk{background:#ffe36b;color:#1b2330;border-radius:3px;padding:0 4px}
 .fbtn .red{color:#dc3522;font-weight:700}
@@ -246,7 +248,7 @@ input,textarea{font:inherit}
 
 <script src="vendor-supabase.js"></script>
 <script src="dict.js" defer></script>
-<script src="t9.js?v=5" defer></script>
-<script src="app.js?v=5" defer></script>
+<script src="t9.js?v=6" defer></script>
+<script src="app.js?v=6" defer></script>
 </body>
 </html>
