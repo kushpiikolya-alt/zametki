@@ -12,7 +12,7 @@ self.addEventListener("fetch", e => {
   if (!sameOrigin && !fonts) return;
   if (sameOrigin && !/dict\.js|vendor-supabase\.js|\.png$/.test(u.pathname)) {
     // код и страница: сначала сеть (свежая версия), без сети — сохранённая копия
-    e.respondWith(fetch(e.request, { cache: "no-cache" }).then(r => { if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; })
+    e.respondWith(fetch(e.request.url, { cache: "no-cache" }).then(r => { if (r.ok) caches.open(CACHE).then(c => c.put(e.request, r.clone())); return r; })
       .catch(() => caches.match(e.request, { ignoreSearch: true })));
     return;
   }
