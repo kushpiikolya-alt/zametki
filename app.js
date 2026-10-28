@@ -511,5 +511,9 @@
   window.ZM = { importArray, pushNow };   // used for one-time migration
 
   if (window.T9) T9.init();
-  if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("sw.js").catch(() => {});
+  if ("serviceWorker" in navigator && location.protocol === "https:") {
+    navigator.serviceWorker.register("sw.js", { updateViaCache: "none" }).then(r => r.update()).catch(() => {});
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener("controllerchange", () => { if (reloaded) return; reloaded = true; pushNow().finally(() => location.reload()); });
+  }
 })();
