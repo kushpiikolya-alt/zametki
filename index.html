@@ -1,0 +1,208 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover,interactive-widget=resizes-content">
+<title>Заметки</title>
+<meta name="description" content="Личные заметки с синхронизацией между телефоном и компьютером">
+<meta name="theme-color" content="#c9682b">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Заметки">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" type="image/png" href="favicon.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400;500;600;700&family=Literata:opsz,wght@7..72,400;7..72,600&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: two-pane notebook on desktop, list → editor screens on phones */
+:root{
+  --bg:#eef1f5; --rail:#e3e8ef; --sheet:#fbfcfd; --fg:#1b2330; --muted:#647086; --line:#d3dae4;
+  --accent:#c9682b; --accent-soft:#f6e3d6; --danger:#b3362c; --ok:#3f9a62;
+  --f-ui:"Golos Text",system-ui,-apple-system,"Segoe UI",sans-serif;
+  --f-read:"Literata",Georgia,"Times New Roman",serif;
+  --f-mono:"JetBrains Mono",ui-monospace,Menlo,Consolas,monospace;
+  --sat:env(safe-area-inset-top,0px); --sab:env(safe-area-inset-bottom,0px);
+  --sal:env(safe-area-inset-left,0px); --sar:env(safe-area-inset-right,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --bg:#12161d; --rail:#171c25; --sheet:#1c222c; --fg:#e4e8ef; --muted:#8a95a8; --line:#2a3240;
+  --accent:#e58a4e; --accent-soft:#3a281d; --danger:#e0675c; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#12161d; --rail:#171c25; --sheet:#1c222c; --fg:#e4e8ef; --muted:#8a95a8; --line:#2a3240;
+  --accent:#e58a4e; --accent-soft:#3a281d; --danger:#e0675c; color-scheme:dark}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--fg);font-family:var(--f-ui);font-size:15px;-webkit-tap-highlight-color:transparent;overscroll-behavior:none}
+button{font:inherit;color:inherit;cursor:pointer}
+input,textarea{font:inherit}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+[hidden]{display:none!important}
+
+/* ---------- auth ---------- */
+.auth{min-height:100%;display:grid;place-items:center;padding:calc(24px + var(--sat)) max(20px,var(--sar)) calc(24px + var(--sab)) max(20px,var(--sal))}
+.auth-card{width:100%;max-width:380px;display:flex;flex-direction:column;gap:14px}
+.auth-logo{width:72px;height:72px;border-radius:18px;box-shadow:0 8px 24px rgba(160,70,20,.25)}
+.auth h1{margin:4px 0 0;font-size:28px;letter-spacing:-.02em}
+.auth p{margin:0;color:var(--muted);line-height:1.5}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;color:var(--muted);font-weight:500}
+.field input{border:1px solid var(--line);background:var(--sheet);color:var(--fg);border-radius:10px;padding:12px 14px;font-size:16px}
+.btn{border:0;border-radius:10px;padding:12px 16px;font-weight:600;font-size:15px}
+.btn.primary{background:var(--accent);color:#fff}
+.btn.ghost{background:transparent;border:1px solid var(--line)}
+.btn:disabled{opacity:.6;cursor:default}
+.auth-row{display:flex;gap:10px}
+.auth-row .btn{flex:1}
+.auth-msg{font-size:14px;min-height:20px;color:var(--danger)}
+.auth-msg.ok{color:var(--ok)}
+
+/* ---------- app ---------- */
+.app{height:100%;display:grid;grid-template-columns:300px 1fr;background:var(--sheet)}
+.rail{background:var(--rail);border-right:1px solid var(--line);display:flex;flex-direction:column;min-height:0;
+  padding-top:var(--sat);padding-left:var(--sal)}
+.rail-head{padding:16px 14px 10px;display:flex;flex-direction:column;gap:10px}
+.brand{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.brand h1{font-size:18px;font-weight:700;margin:0;letter-spacing:-.01em}
+.count{font-family:var(--f-mono);font-size:11px;color:var(--muted)}
+.new{display:flex;align-items:center;gap:6px;background:var(--accent);color:#fff;border:0;border-radius:8px;padding:8px 12px;font-weight:600;font-size:13px}
+.new kbd{font-family:var(--f-mono);font-size:10px;opacity:.75}
+.search{width:100%;border:1px solid var(--line);background:var(--sheet);color:var(--fg);border-radius:8px;padding:9px 11px;font-size:14px}
+.list{flex:1;overflow-y:auto;padding:4px 8px 12px;display:flex;flex-direction:column;gap:2px;min-height:0;-webkit-overflow-scrolling:touch}
+.group{font-family:var(--f-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);padding:12px 8px 4px}
+.item{display:block;width:100%;text-align:left;border:0;background:transparent;border-radius:9px;padding:10px 11px;min-width:0}
+.item:hover{background:color-mix(in srgb,var(--sheet) 60%,transparent)}
+.item[aria-current="true"]{background:var(--sheet);box-shadow:inset 3px 0 0 var(--accent)}
+.item .t{font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .t .pin{color:var(--accent);font-size:10px;margin-right:6px;vertical-align:2px}
+.item .p{color:var(--muted);font-size:13px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.item .d{font-family:var(--f-mono);font-size:10.5px;color:var(--muted);margin-top:3px}
+.item-actions{display:flex;gap:6px;margin-top:8px}
+.item-actions span{border:1px solid var(--line);border-radius:6px;padding:3px 8px;font-size:12px;background:var(--sheet)}
+.item-actions span.del{color:var(--danger);border-color:var(--danger)}
+.empty-list{color:var(--muted);font-size:13.5px;padding:16px 10px;line-height:1.55}
+.trash-link{border:0;background:transparent;color:var(--muted);font-size:13px;padding:8px 14px;text-align:left}
+.trash-link:hover{color:var(--fg)}
+.foot{font-size:12px;color:var(--muted);padding:10px 14px calc(12px + var(--sab));border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px}
+.foot-row{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
+.dot{width:7px;height:7px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)} .dot.warn{background:#d39b2a}
+.mini{border:1px solid var(--line);background:transparent;border-radius:6px;padding:4px 9px;font-size:12px;color:var(--muted)}
+.mini:hover{color:var(--fg);border-color:var(--muted)}
+.who{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
+
+.editor{display:flex;flex-direction:column;min-width:0;min-height:0;padding-top:var(--sat);padding-right:var(--sar)}
+.bar{display:flex;align-items:center;gap:8px;padding:12px 18px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.back{display:none;border:0;background:transparent;color:var(--accent);padding:6px 4px;font-size:16px;font-weight:600}
+.meta{font-family:var(--f-mono);font-size:11px;color:var(--muted);flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tool{border:1px solid var(--line);background:transparent;border-radius:7px;padding:6px 11px;font-size:13px;color:var(--muted)}
+.tool:hover{color:var(--fg);border-color:var(--muted)}
+.tool.on{color:var(--accent);border-color:var(--accent);background:var(--accent-soft)}
+.tool.danger{color:#fff;border-color:var(--danger);background:var(--danger)}
+.sheet{flex:1;overflow-y:auto;padding:28px 18px 40px;min-height:0;-webkit-overflow-scrolling:touch}
+.inner{max-width:68ch;margin:0 auto;display:flex;flex-direction:column;gap:12px;min-height:100%}
+.title{border:0;background:transparent;color:var(--fg);font-size:28px;font-weight:700;letter-spacing:-.02em;padding:0;width:100%}
+.title::placeholder,.body::placeholder{color:var(--muted);opacity:.7}
+.title:focus,.body:focus{outline:none}
+.body{flex:1;min-height:55vh;border:0;background:transparent;color:var(--fg);font-family:var(--f-read);font-size:17px;line-height:1.7;resize:none;padding:0;width:100%}
+.blank{margin:auto;text-align:center;color:var(--muted);max-width:36ch;line-height:1.6;display:flex;flex-direction:column;gap:12px;align-items:center}
+.blank b{color:var(--fg);font-size:18px}
+.keys{font-family:var(--f-mono);font-size:11.5px;display:flex;gap:14px;flex-wrap:wrap;justify-content:center}
+.keys kbd{border:1px solid var(--line);border-radius:4px;padding:1px 5px;background:var(--rail)}
+.t9bar{display:flex;align-items:center;gap:8px;padding:10px 18px calc(10px + var(--sab));border-top:1px solid var(--line);background:var(--rail);flex-wrap:wrap;min-height:50px}
+.t9chip{border:1px solid var(--line);background:var(--sheet);border-radius:999px;padding:6px 14px;font-size:14px;color:var(--fg)}
+.t9chip.first{border-color:var(--accent);color:var(--accent);font-weight:600}
+.t9hint{font-family:var(--f-mono);font-size:11px;color:var(--muted);margin-left:auto}
+.t9note{font-size:13px;color:var(--muted);background:var(--accent-soft);border-radius:6px;padding:4px 10px}
+.fab{display:none}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--sab));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;max-width:calc(100% - 32px)}
+
+@media (max-width:720px){
+  .app{grid-template-columns:1fr}
+  .app.editing .rail{display:none}
+  .app:not(.editing) .editor{display:none}
+  .rail{border-right:0;padding-right:var(--sar)}
+  .rail-head{padding:14px 16px 10px}
+  .brand h1{font-size:26px}
+  .new{display:none}
+  .item{padding:13px 12px}
+  .back{display:inline-block}
+  .bar{padding:8px 12px;gap:6px}
+  .meta{display:none}
+  .bar .spacer{flex:1}
+  .tool{padding:8px 11px}
+  .sheet{padding:18px 16px 30px}
+  .title{font-size:24px}
+  .body{font-size:17px}
+  .fab{display:grid;place-items:center;position:fixed;right:calc(20px + var(--sar));bottom:calc(84px + var(--sab));width:58px;height:58px;border-radius:50%;
+    border:0;background:var(--accent);color:#fff;font-size:30px;line-height:1;box-shadow:0 8px 22px rgba(150,60,15,.35);z-index:20}
+  .app.editing .fab{display:none}
+  .keys{display:none}
+}
+@media (min-width:721px){ .bar .spacer{flex:0} }
+@media (prefers-reduced-motion:no-preference){.item{transition:background .12s}}
+</style>
+</head>
+<body>
+
+<section class="auth" id="auth" hidden>
+  <form class="auth-card" id="authForm" novalidate>
+    <img class="auth-logo" src="icon-192.png" alt="">
+    <h1>Заметки</h1>
+    <p>Войдите, чтобы заметки были одинаковыми на телефоне и компьютере.</p>
+    <div class="field"><label for="email">Почта</label><input id="email" type="email" autocomplete="email" inputmode="email" required></div>
+    <div class="field"><label for="password">Пароль</label><input id="password" type="password" autocomplete="current-password" minlength="6" required></div>
+    <div class="auth-row">
+      <button class="btn primary" id="signIn" type="submit">Войти</button>
+      <button class="btn ghost" id="signUp" type="button">Создать аккаунт</button>
+    </div>
+    <div class="auth-msg" id="authMsg" role="status"></div>
+  </form>
+</section>
+
+<div class="app" id="app" hidden>
+  <aside class="rail">
+    <div class="rail-head">
+      <div class="brand">
+        <div><h1 id="railTitle">Заметки</h1><div class="count" id="count"></div></div>
+        <button class="new" id="newBtn" title="Новая заметка (Alt+N)">+ Новая <kbd>Alt+N</kbd></button>
+      </div>
+      <input class="search" id="search" type="search" placeholder="Поиск" autocomplete="off">
+    </div>
+    <div class="list" id="list"></div>
+    <button class="trash-link" id="trashLink">Корзина</button>
+    <div class="foot">
+      <div class="foot-row"><span class="dot" id="dot"></span><span id="syncText">Подключаюсь…</span></div>
+      <div class="foot-row">
+        <button class="mini" id="exportBtn">Экспорт</button>
+        <button class="mini" id="importBtn">Импорт</button>
+        <button class="mini" id="themeBtn">Тема: авто</button>
+        <input id="importFile" type="file" accept=".json,application/json" hidden>
+      </div>
+      <div class="foot-row"><span class="who" id="who"></span><button class="mini" id="logoutBtn">Выйти</button></div>
+    </div>
+  </aside>
+  <section class="editor">
+    <div class="bar">
+      <button class="back" id="back">‹ Назад</button>
+      <span class="meta" id="meta"></span>
+      <span class="spacer"></span>
+      <button class="tool" id="t9Btn" title="Подсказки и автоисправление">Т9: вкл</button>
+      <button class="tool" id="pinBtn" hidden>Закрепить</button>
+      <button class="tool" id="delBtn" hidden>Удалить</button>
+    </div>
+    <div class="sheet"><div class="inner" id="inner"></div></div>
+    <div class="t9bar" id="t9bar" hidden></div>
+  </section>
+  <button class="fab" id="fab" aria-label="Новая заметка">+</button>
+</div>
+<div class="toast" id="toast" hidden></div>
+
+<script src="vendor-supabase.js"></script>
+<script src="dict.js" defer></script>
+<script src="t9.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>
