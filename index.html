@@ -122,7 +122,7 @@ input,textarea{font:inherit}
 .fab{display:none}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(24px + var(--sab));background:var(--fg);color:var(--bg);padding:10px 16px;border-radius:10px;font-size:14px;z-index:50;max-width:calc(100% - 32px)}
 
-@media (max-width:720px){
+@media (max-width:720px), (pointer:coarse) and (max-width:1100px) and (orientation:portrait), (pointer:coarse) and (max-height:500px){
   .app{grid-template-columns:1fr}
   .app.editing .rail{display:none}
   .app:not(.editing) .editor{display:none}
@@ -144,7 +144,7 @@ input,textarea{font:inherit}
   .app.editing .fab{display:none}
   .keys{display:none}
 }
-@media (min-width:721px){ .bar .spacer{flex:0} }
+@media (min-width:721px) and (pointer:fine){ .bar .spacer{flex:0} }
 @media (prefers-reduced-motion:no-preference){.item{transition:background .12s}}
 
 /* ---------- форматирование ---------- */
@@ -172,7 +172,7 @@ input,textarea{font:inherit}
 .rich blockquote{border-left:3px solid var(--accent);margin:6px 0;padding-left:12px;color:var(--muted)}
 :root[data-theme="dark"] .rich span[style*="background-color"],:root:not([data-theme="light"]) .rich span[style*="background-color"]{color:#1b2330}
 @media (prefers-color-scheme:light){:root:not([data-theme="dark"]) .rich span[style*="background-color"]{color:inherit}}
-@media (max-width:720px){
+@media (max-width:720px), (pointer:coarse) and (max-width:1100px) and (orientation:portrait), (pointer:coarse) and (max-height:500px){
   .fmtbar{flex-wrap:nowrap;overflow-x:auto;top:-18px;-webkit-overflow-scrolling:touch;scrollbar-width:none}
   .fmtbar::-webkit-scrollbar{display:none}
   .fbtn{padding:8px 11px;flex:none}
@@ -187,7 +187,7 @@ input,textarea{font:inherit}
 .tbl-tools[hidden]{display:none!important}
 .fbtn.tb{font-size:13px;border:1px solid var(--line)}
 .fbtn.danger{color:var(--danger);border-color:var(--danger)}
-@media (max-width:720px){.tbl-tools{width:auto;border-top:0;border-left:1px dashed var(--line);padding:0 0 0 6px;margin:0;flex-wrap:nowrap}}
+@media (max-width:720px), (pointer:coarse) and (max-width:1100px) and (orientation:portrait), (pointer:coarse) and (max-height:500px){.tbl-tools{width:auto;border-top:0;border-left:1px dashed var(--line);padding:0 0 0 6px;margin:0;flex-wrap:nowrap}}
 </style>
 </head>
 <body>
@@ -248,7 +248,7 @@ input,textarea{font:inherit}
 
 <script src="vendor-supabase.js"></script>
 <script src="dict.js" defer></script>
-<script src="t9.js?v=6" defer></script>
-<script src="app.js?v=6" defer></script>
+<script src="t9.js?v=7" defer></script>
+<script src="app.js?v=7" defer></script>
 </body>
 </html>
